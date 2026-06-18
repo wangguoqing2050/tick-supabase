@@ -1,0 +1,2335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Tick — 智能打卡 · 云同步</title>
+
+<!-- PWA Meta -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tick">
+<meta name="theme-color" content="#a78bfa">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" sizes="512x512" type="image/png" href="icon-512.png">
+<link rel="manifest" href="manifest-v3.json">
+
+<!-- Supabase JS SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<style>
+  :root {
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --primary: #a78bfa;
+    --primary-dark: #8b5cf6;
+    --success: #a78bfa;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --text: #1e293b;
+    --text-secondary: #475569;
+    --muted: #94a3b8;
+    --border: #e2e8f0;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04);
+    --radius: 16px;
+    --radius-sm: 12px;
+    --radius-xs: 8px;
+    --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    padding: 16px;
+    line-height: 1.5;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .container { max-width:520px; margin:0 auto; }
+
+  /* ===== Sync Bar ===== */
+  .sync-bar {
+    background: var(--card);
+    border-radius: var(--radius-sm);
+    padding: 10px 16px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition);
+    border: 1px solid var(--border);
+    font-weight: 500;
+  }
+  .sync-bar:hover { box-shadow: var(--shadow); border-color: #cbd5e1; }
+  .sync-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.06);
+  }
+  .sync-dot.synced { background: #a78bfa; box-shadow: 0 0 0 3px rgba(167,139,250,0.15); }
+  .sync-dot.syncing { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.15); animation: pulse-dot 1s infinite; }
+  .sync-dot.error { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.15); }
+  .sync-dot.local { background: #94a3b8; }
+  @keyframes pulse-dot { 0%,100%{opacity:1; transform:scale(1)} 50%{opacity:0.4; transform:scale(0.7)} }
+  .sync-arrow { font-size: 14px; opacity: 0.6; }
+
+  /* ===== Clock Card ===== */
+  .clock-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f5f3ff 50%, #f8fafc 100%);
+    border-radius: var(--radius);
+    padding: 36px 28px 28px;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+    margin-bottom: 16px;
+    color: var(--text);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #ede9fe;
+  }
+  .clock-card::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(167,139,250,0.06), transparent 70%);
+    pointer-events: none;
+  }
+  .date-label {
+    font-size: 14px; color: var(--text-secondary); margin-bottom: 8px;
+    font-weight: 500; letter-spacing: 0.02em;
+  }
+  .time-display {
+    font-size: 56px; font-weight: 800; letter-spacing: 3px;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.1;
+  }
+  .weekday {
+    font-size: 15px; color: var(--text-secondary); margin-top: 6px;
+    font-weight: 500;
+  }
+  .period-tag {
+    display: inline-block; padding: 4px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 700; margin-top: 10px;
+    letter-spacing: 0.02em;
+  }
+  .period-tag.morning { background: #dbeafe; color: #1d4ed8; }
+  .period-tag.work { background: #ede9fe; color: #8b5cf6; }
+  .period-tag.afternoon { background: #fef3c7; color: #b45309; }
+  .period-tag.off { background: #ede9fe; color: #8b5cf6; }
+  .period-tag.overtime { background: #fee2e2; color: #dc2626; }
+
+  .target-time {
+    margin-top: 14px; padding: 12px 18px; border-radius: var(--radius-xs);
+    font-size: 14px; font-weight: 600; letter-spacing: 0.5px;
+    text-align: center;
+    background: #ede9fe; color: #8b5cf6;
+    border: 1px solid #c4b5fd;
+  }
+  .target-time .small { font-size: 11px; font-weight: 400; opacity: 0.7; display: block; }
+  .target-time.urgent {
+    background: #fee2e2; color: #dc2626;
+    border: 1px solid #fecaca;
+    animation: pulse 1s infinite;
+  }
+  .target-time .adjust-btn {
+    display: inline-block; margin-left: 8px; padding: 3px 12px;
+    border-radius: 12px; background: rgba(0,0,0,0.06);
+    font-size: 12px; cursor: pointer; font-weight: 500;
+    text-decoration: underline; vertical-align: middle;
+    transition: background var(--transition);
+    color: inherit;
+  }
+  .target-time .adjust-btn:hover { background: rgba(0,0,0,0.1); }
+
+  /* ===== Punch Card ===== */
+  .punch-card {
+    background: var(--card); border-radius: var(--radius); padding: 24px;
+    box-shadow: var(--shadow); margin-bottom: 16px;
+    border: 1px solid var(--border);
+    transition: box-shadow var(--transition);
+  }
+  .punch-card:hover { box-shadow: var(--shadow-lg); }
+
+  .section-title {
+    font-size: 13px; color: var(--muted); margin-bottom: 16px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::before {
+    content: ''; display: block; width: 4px; height: 4px;
+    border-radius: 50%; background: var(--primary);
+  }
+
+  .punch-row { display: flex; gap: 12px; margin-bottom: 14px; }
+  .punch-btn {
+    flex: 1; border: none; border-radius: var(--radius-sm); padding: 18px 12px;
+    font-size: 17px; font-weight: 700; cursor: pointer; transition: all var(--transition);
+    color: #fff; position: relative; overflow: hidden;
+    letter-spacing: 0.02em;
+  }
+  .punch-btn:active { transform: scale(0.97); }
+  .punch-btn.punch-in {
+    background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+    box-shadow: 0 4px 14px rgba(167,139,250,0.3);
+  }
+  .punch-btn.punch-in:hover:not(:disabled) {
+    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+    box-shadow: 0 6px 20px rgba(167,139,250,0.4);
+  }
+  .punch-btn.punch-out {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    box-shadow: 0 4px 14px rgba(239,68,68,0.3);
+  }
+  .punch-btn.punch-out:hover:not(:disabled) {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    box-shadow: 0 6px 20px rgba(239,68,68,0.4);
+  }
+  .punch-btn:disabled {
+    background: #e2e8f0 !important; color: #94a3b8 !important;
+    cursor: not-allowed; box-shadow: none !important;
+  }
+  .punch-btn .small { font-size: 11px; font-weight: 400; opacity: 0.85; display: block; margin-top: 3px; }
+
+  .status-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .status-btn {
+    flex: 1; border: 2px solid var(--border); border-radius: var(--radius-xs);
+    padding: 10px 6px; font-size: 13px; cursor: pointer; background: #fff;
+    color: var(--text-secondary); transition: all var(--transition); font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .status-btn:hover { border-color: var(--primary); color: var(--primary); background: #f5f3ff; }
+  .status-btn.active-leave { border-color: #a855f7; background: #faf5ff; color: #7e22ce; font-weight: 700; }
+  .status-btn.active-out { border-color: #ea580c; background: #fff7ed; color: #c2410c; font-weight: 700; }
+  .status-btn.active-normal { border-color: var(--primary); background: #f5f3ff; color: #8b5cf6; font-weight: 700; }
+  .status-btn.active-leave-morning { border-color: #f59e0b; background: #fffbeb; color: #b45309; font-weight: 700; }
+  .status-btn.active-leave-afternoon { border-color: #f59e0b; background: #fffbeb; color: #b45309; font-weight: 700; }
+  .status-btn.half-btn { font-size: 12px; padding: 8px 4px; }
+
+  .punch-hint {
+    text-align: center; font-size: 13px; color: var(--muted);
+    margin-top: 12px; font-weight: 500;
+  }
+
+  .countdown-bar {
+    text-align: center; padding: 10px 16px; border-radius: var(--radius-xs);
+    margin-top: 12px; font-size: 13px; font-weight: 600;
+  }
+  .countdown-bar.normal { background: #f5f3ff; color: #8b5cf6; }
+  .countdown-bar.soon { background: #fefce8; color: #b45309; animation: pulse 1.5s infinite; }
+  .countdown-bar.now { background: #fef2f2; color: #dc2626; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.65} }
+
+  /* ===== Today Record ===== */
+  .record-card {
+    background: var(--card); border-radius: var(--radius); padding: 24px;
+    box-shadow: var(--shadow); margin-bottom: 16px;
+    border: 1px solid var(--border);
+  }
+
+  .today-record { display: flex; gap: 14px; margin-bottom: 16px; }
+  .today-record .item {
+    flex: 1; text-align: center; padding: 16px 8px;
+    border-radius: var(--radius-sm); background: #f8fafc;
+    border: 1px solid #f1f5f9;
+    transition: all var(--transition);
+  }
+  .today-record .item:hover { background: #f5f3ff; border-color: rgba(167,139,250,0.2); }
+  .today-record .label {
+    font-size: 11px; color: var(--muted); margin-bottom: 6px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .today-record .value {
+    font-size: 24px; font-weight: 800; color: var(--text);
+    font-variant-numeric: tabular-nums; line-height: 1.2;
+  }
+  .today-record .value.empty { color: #cbd5e1; font-size: 14px; font-weight: 400; }
+  .today-record .value.expected { color: #94a3b8; font-size: 13px; font-weight: 600; }
+  .hours-badge {
+    display: inline-block; padding: 3px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 700; margin-top: 8px;
+    letter-spacing: 0.02em;
+  }
+  .hours-badge.ok { background: #ede9fe; color: #4c1d95; }
+  .hours-badge.short { background: #fef3c7; color: #92400e; }
+
+  .status-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 11px; font-weight: 700; margin-top: 6px;
+  }
+  .status-badge.leave { background: #f3e8ff; color: #7e22ce; }
+  .status-badge.leave_morning { background: #fef3c7; color: #92400e; }
+  .status-badge.leave_afternoon { background: #fef3c7; color: #92400e; }
+  .status-badge.out { background: #ffedd5; color: #c2410c; }
+
+  .note-row { display: flex; gap: 8px; }
+  .note-row input {
+    flex: 1; border: 1.5px solid var(--border); border-radius: var(--radius-xs);
+    padding: 10px 14px; font-size: 13px; outline: none; transition: border var(--transition);
+    background: #f8fafc; font-weight: 500;
+  }
+  .note-row input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(167,139,250,0.1); }
+  .note-row button {
+    border: none; background: var(--primary); color: #fff;
+    border-radius: var(--radius-xs); padding: 10px 18px; font-size: 13px;
+    cursor: pointer; font-weight: 600; transition: all var(--transition);
+  }
+  .note-row button:hover { background: var(--primary-dark); box-shadow: 0 4px 12px rgba(167,139,250,0.25); }
+
+  /* ===== Stats Dashboard ===== */
+  .stats-card {
+    background: var(--card); border-radius: var(--radius); padding: 24px;
+    box-shadow: var(--shadow); margin-bottom: 16px;
+    border: 1px solid var(--border);
+    position: relative; overflow: hidden;
+  }
+  .stats-card::before {
+    content: '📊'; position: absolute; top: 20px; right: 24px;
+    font-size: 28px; opacity: 0.5; pointer-events: none;
+  }
+  .stats-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .stats-month {
+    font-size: 13px; color: var(--primary); font-weight: 700;
+    background: #f5f3ff; padding: 3px 12px; border-radius: 20px;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stat-item {
+    background: #f8fafc; border-radius: var(--radius-sm);
+    padding: 18px 14px; text-align: center;
+    border: 1px solid #f1f5f9;
+    transition: all var(--transition);
+    position: relative;
+  }
+  .stat-item:hover { background: #f5f3ff; border-color: rgba(167,139,250,0.15); }
+  .stat-item .stat-icon {
+    font-size: 20px; margin-bottom: 6px; display: block;
+  }
+  .stat-item .stat-label {
+    font-size: 11px; color: var(--muted); margin-bottom: 6px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .stat-item .stat-value {
+    font-size: 28px; font-weight: 800; color: var(--text);
+    line-height: 1.1;
+    background: linear-gradient(135deg, var(--text), var(--text-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat-item.highlight { background: linear-gradient(135deg, #f5f3ff, #f5f3ff); }
+  .stat-item.highlight .stat-value {
+    background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .stats-actions { display: flex; gap: 8px; }
+  .export-btn {
+    flex: 1; border: none; background: #1e293b; color: #fff;
+    border-radius: var(--radius-xs); padding: 12px; font-size: 14px;
+    cursor: pointer; font-weight: 600; transition: all var(--transition);
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .export-btn:hover { background: #334155; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .btn-secondary {
+    flex: 1; border: none; background: var(--primary); color: #fff;
+    border-radius: var(--radius-xs); padding: 12px; font-size: 14px;
+    cursor: pointer; font-weight: 600; transition: all var(--transition);
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-secondary:hover { background: var(--primary-dark); box-shadow: 0 4px 12px rgba(167,139,250,0.25); }
+
+  .btn-danger-sm {
+    background: #fef2f2; color: #ef4444;
+    border: 1px solid #fecaca; border-radius: var(--radius-xs);
+    padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;
+    transition: all var(--transition);
+  }
+  .btn-danger-sm:hover { background: #fecaca; }
+
+  /* ===== History Card ===== */
+  .history-card {
+    background: var(--card); border-radius: var(--radius); padding: 24px;
+    box-shadow: var(--shadow); margin-bottom: 16px;
+    border: 1px solid var(--border);
+  }
+  .history-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .history-table th {
+    text-align: left; padding: 10px 8px; color: var(--muted);
+    font-weight: 700; font-size: 11px; border-bottom: 2px solid var(--border);
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .history-table td {
+    padding: 10px 8px; border-bottom: 1px solid #f1f5f9;
+    font-variant-numeric: tabular-nums; font-weight: 500;
+  }
+  .history-table tr:hover td { background: #f8fafc; }
+  .history-table .incomplete { color: var(--warning); font-weight: 700; }
+  .history-table .note-cell {
+    color: var(--muted); font-size: 12px; max-width: 60px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .delete-btn {
+    background: none; border: none; color: var(--danger); cursor: pointer;
+    font-size: 16px; padding: 4px 8px; border-radius: 6px; transition: all var(--transition);
+    font-weight: 700;
+  }
+  .delete-btn:hover { background: #fef2f2; color: #dc2626; }
+
+  /* ===== Toast ===== */
+  .toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    padding: 12px 28px; border-radius: var(--radius-xs); font-size: 14px; font-weight: 700;
+    color: #fff; z-index: 999; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    box-shadow: var(--shadow-lg);
+  }
+  .toast.show { opacity: 1; }
+  .toast.success { background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
+  .toast.warn { background: linear-gradient(135deg, #f59e0b, #d97706); }
+  .toast.error { background: linear-gradient(135deg, #ef4444, #dc2626); }
+
+  /* ===== Modal ===== */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(15,23,42,0.5); z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .modal {
+    background: var(--card); border-radius: var(--radius); padding: 28px 24px;
+    width: 90%; max-width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    border: 1px solid var(--border);
+  }
+  .modal h4 {
+    font-size: 17px; margin-bottom: 18px; font-weight: 700;
+    color: var(--text);
+  }
+  .modal input, .modal select {
+    width: 100%; border: 1.5px solid var(--border); border-radius: var(--radius-xs);
+    padding: 10px 14px; font-size: 14px; margin-bottom: 10px; outline: none;
+    transition: border var(--transition); background: #f8fafc; font-weight: 500;
+  }
+  .modal input:focus, .modal select:focus {
+    border-color: var(--primary); background: #fff;
+    box-shadow: 0 0 0 3px rgba(167,139,250,0.1);
+  }
+  .modal label {
+    font-size: 12px; color: var(--text-secondary); font-weight: 600;
+    display: block; margin-bottom: 4px;
+  }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .modal-btns button {
+    border: none; border-radius: var(--radius-xs); padding: 10px 20px;
+    font-size: 13px; cursor: pointer; font-weight: 600; transition: all var(--transition);
+  }
+  .modal-btns .btn-cancel { background: #f1f5f9; color: var(--text-secondary); }
+  .modal-btns .btn-cancel:hover { background: #e2e8f0; }
+  .modal-btns .btn-confirm { background: var(--primary); color: #fff; }
+  .modal-btns .btn-confirm:hover { background: var(--primary-dark); box-shadow: 0 4px 12px rgba(167,139,250,0.25); }
+
+  .sync-code {
+    font-size: 28px; font-weight: 900; letter-spacing: 4px;
+    text-align: center; padding: 16px; background: #f5f3ff;
+    border-radius: var(--radius-sm); color: #8b5cf6; margin: 12px 0;
+    user-select: all; cursor: pointer; border: 2px dashed rgba(167,139,250,0.3);
+  }
+  .sync-hint { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.6; }
+
+  /* ===== Wheel Picker ===== */
+  .wheel-picker {
+    display: flex; gap: 12px; justify-content: center; align-items: center;
+    margin: 16px 0; user-select: none;
+  }
+  .wheel-col {
+    position: relative; width: 80px; height: 200px;
+    overflow-y: auto; overflow-x: hidden;
+    scroll-snap-type: y mandatory;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-sm); background: #f8fafc;
+    scrollbar-width: none; border: 1px solid var(--border);
+  }
+  .wheel-col::-webkit-scrollbar { display: none; }
+  .wheel-col::before, .wheel-col::after {
+    content: ''; position: sticky; left: 0; right: 0; display: block; height: 80px;
+    pointer-events: none; z-index: 1;
+  }
+  .wheel-col::before {
+    top: 0; background: linear-gradient(to bottom, #f8fafc, transparent);
+  }
+  .wheel-col::after {
+    bottom: 0; background: linear-gradient(to top, #f8fafc, transparent);
+  }
+  .wheel-highlight {
+    position: absolute; top: 50%; left: 0; right: 0; height: 40px;
+    transform: translateY(-50%);
+    border-top: 2px solid var(--primary);
+    border-bottom: 2px solid var(--primary);
+    pointer-events: none; z-index: 2; border-radius: 2px;
+    background: rgba(167,139,250,0.05);
+  }
+  .wheel-item {
+    height: 40px; display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 700; color: #cbd5e1;
+    scroll-snap-align: center; cursor: pointer;
+    transition: color 0.15s, font-size 0.15s;
+  }
+  .wheel-item.active {
+    color: var(--primary-dark); font-size: 28px;
+  }
+  .wheel-sep {
+    font-size: 28px; font-weight: 900; color: var(--text);
+    line-height: 200px;
+  }
+  .wheel-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .wheel-actions button {
+    flex: 1; border: none; border-radius: var(--radius-xs); padding: 10px;
+    font-size: 13px; cursor: pointer; font-weight: 600; transition: all var(--transition);
+  }
+  .wheel-actions .btn-now { background: #dbeafe; color: #1d4ed8; }
+  .wheel-actions .btn-now:hover { background: #bfdbfe; }
+  .wheel-actions .btn-reset { background: #fef3c7; color: #92400e; }
+  .wheel-actions .btn-reset:hover { background: #fde68a; }
+  .wheel-label {
+    text-align: center; font-size: 11px; color: var(--muted);
+    margin-bottom: 4px; font-weight: 700; letter-spacing: 2px;
+  }
+
+  /* ===== Install Bar ===== */
+  .install-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 150;
+    background: linear-gradient(135deg, #a78bfa, #8b5cf6); color: #fff;
+    padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
+    display: none; align-items: center; gap: 10px;
+    font-size: 14px; font-weight: 600; box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+  }
+  .install-bar.show { display: flex; }
+  .install-bar-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .install-bar-btn {
+    background: rgba(255,255,255,0.25); color: #fff;
+    border: 1.5px solid rgba(255,255,255,0.4); border-radius: var(--radius-xs);
+    padding: 8px 16px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap;
+    transition: all var(--transition);
+  }
+  .install-bar-btn:hover { background: rgba(255,255,255,0.4); }
+  .install-bar-close {
+    background: none; border: none; color: rgba(255,255,255,0.6);
+    font-size: 18px; cursor: pointer; padding: 0 4px;
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 380px) {
+    .time-display { font-size: 44px; }
+    .punch-btn { font-size: 15px; padding: 14px 8px; }
+    .today-record .value { font-size: 20px; }
+    .stat-item .stat-value { font-size: 24px; }
+  }
+
+  /* ===== Update Toast ===== */
+  .update-toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(120px);
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    color: #fff; padding: 12px 24px; border-radius: 28px;
+    font-size: 14px; font-weight: 600;
+    box-shadow: 0 8px 32px rgba(167,139,250,0.35);
+    cursor: pointer; z-index: 9999;
+    display: flex; align-items: center; gap: 10px;
+    transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+    white-space: nowrap;
+    user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  .update-toast.show { transform: translateX(-50%) translateY(0); }
+  .update-toast:active { transform: translateX(-50%) translateY(0) scale(0.96); }
+  .update-toast-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #fff; animation: pulse-dot 1.5s infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.5); }
+  }
+
+  /* ===== Version tag ===== */
+  .version-tag {
+    text-align: center; font-size: 10px; color: var(--muted);
+    padding: 12px 0 20px; opacity: 0.5;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 同步状态栏 -->
+  <div class="sync-bar" id="syncBar" onclick="toggleSyncPanel()" title="点击查看同步状态">
+    <span class="sync-dot local" id="syncDot"></span>
+    <span id="syncLabel">正在连接云端...</span>
+    <span style="flex:1;"></span>
+    <span class="sync-arrow" id="syncArrow">⚙️</span>
+  </div>
+
+  <!-- 时钟卡片 -->
+  <div class="clock-card">
+    <div class="date-label" id="dateLabel">--</div>
+    <div class="time-display" id="timeDisplay">--:--:--</div>
+    <div class="weekday" id="weekdayLabel">--</div>
+    <span class="period-tag" id="periodTag">--</span>
+    <div class="target-time" id="targetTime" style="display:none;"></div>
+  </div>
+
+  <!-- 打卡区 -->
+  <div class="punch-card">
+    <div class="section-title">⏱ 今日打卡</div>
+    <div class="punch-row">
+      <button class="punch-btn punch-in" id="btnPunchIn" onclick="punch('in')">
+        上班打卡<span class="small">06:00 - 10:00</span>
+      </button>
+      <button class="punch-btn punch-out" id="btnPunchOut" onclick="punch('out')">
+        下班打卡<span class="small">16:45 - 21:40</span>
+      </button>
+    </div>
+    <div class="countdown-bar" id="countdownBar" style="display:none;"></div>
+    <div class="status-row">
+      <button class="status-btn active-normal" id="statusNormal" onclick="setStatus(null)">正常出勤</button>
+      <button class="status-btn" id="statusLeave" onclick="setStatus('leave')">⛱ 全天调休</button>
+      <button class="status-btn" id="statusOut" onclick="setStatus('out')">🏃 外出</button>
+    </div>
+    <div class="status-row" style="margin-top:4px;">
+      <button class="status-btn half-btn" id="statusLeaveMorning" onclick="setStatus('leave_morning')">🌅 上午调休</button>
+      <button class="status-btn half-btn" id="statusLeaveAfternoon" onclick="setStatus('leave_afternoon')">🌇 下午调休</button>
+    </div>
+    <div class="punch-hint" id="punchHint"></div>
+    <div style="text-align:right;margin-top:10px;">
+      <button class="btn-danger-sm" onclick="resetToday()">🗑 清除今日记录</button>
+    </div>
+  </div>
+
+  <!-- 今日记录 -->
+  <div class="record-card">
+    <div class="section-title">📋 今日记录</div>
+    <div class="today-record">
+      <div class="item">
+        <div class="label">上班时间</div>
+        <div class="value empty" id="todayIn">--:--</div>
+      </div>
+      <div class="item">
+        <div class="label">下班时间</div>
+        <div class="value empty" id="todayOut">--:--</div>
+      </div>
+      <div class="item">
+        <div class="label">工时</div>
+        <div class="value empty" id="todayHours">--</div>
+        <div id="todayBadge"></div>
+      </div>
+    </div>
+    <div class="note-row">
+      <input type="text" id="noteInput" placeholder="添加备注（选填）" maxlength="50">
+      <button onclick="saveNote()">保存</button>
+    </div>
+  </div>
+
+  <!-- 统计看板 -->
+  <div class="stats-card">
+    <div class="stats-header">
+      <div class="section-title" style="margin-bottom:0;">📊 本月数据看板</div>
+      <span class="stats-month" id="statsMonthLabel"></span>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-item highlight">
+        <span class="stat-icon">📅</span>
+        <div class="stat-label">出勤天数</div>
+        <div class="stat-value" id="statDays">0</div>
+      </div>
+      <div class="stat-item">
+        <span class="stat-icon">⏳</span>
+        <div class="stat-label">总工时</div>
+        <div class="stat-value" id="statTotal">0h</div>
+      </div>
+      <div class="stat-item">
+        <span class="stat-icon">🏖</span>
+        <div class="stat-label">调休天数</div>
+        <div class="stat-value" id="statLeave">0</div>
+      </div>
+      <div class="stat-item">
+        <span class="stat-icon">🏃</span>
+        <div class="stat-label">外出天数</div>
+        <div class="stat-value" id="statOut">0</div>
+      </div>
+    </div>
+    <div class="stats-actions">
+      <button class="export-btn" onclick="exportCSV()">📥 导出 CSV</button>
+      <button class="btn-secondary" onclick="toggleManual()">✏️ 手动补录</button>
+    </div>
+  </div>
+
+  <!-- 历史记录 -->
+  <div class="history-card">
+    <div class="section-title">📜 最近记录</div>
+    <div style="max-height:360px; overflow-y:auto; border-radius:var(--radius-xs);">
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>上班</th>
+            <th>下班</th>
+            <th>工时</th>
+            <th>状态</th>
+            <th>备注</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="historyBody">
+          <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">暂无记录</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="version-tag">Tick v33 · Supabase 云同步</div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- 手动补录弹窗 -->
+<div class="modal-overlay" id="manualModal" style="display:none;">
+  <div class="modal">
+    <h4>✏️ 手动补录打卡</h4>
+    <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
+      <button onclick="quickFillAll()" style="flex:1;padding:8px 4px;border:1.5px solid #a78bfa;border-radius:8px;background:#f5f3ff;color:#8b5cf6;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;">✅ 一键今日完整打卡</button>
+      <button onclick="quickFillInOnly()" style="flex:1;padding:8px 4px;border:1.5px solid #6366f1;border-radius:8px;background:#eef2ff;color:#4f46e5;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;">📍 只补上班</button>
+    </div>
+    <label>日期</label>
+    <input type="date" id="manualDate">
+    <label>状态</label>
+    <select id="manualStatus" onchange="onStatusChange()">
+      <option value="">正常出勤</option>
+      <option value="leave">全天调休</option>
+      <option value="leave_morning">上午调休(下午上班)</option>
+      <option value="leave_afternoon">下午调休(上午上班)</option>
+      <option value="out">外出</option>
+    </select>
+    <label>上班时间</label>
+    <input type="time" id="manualIn" value="09:00" oninput="autoCalcOut()">
+    <label>下班时间 <span style="font-weight:400;color:#94a3b8;font-size:11px;">（自动推算+8h45m，可手动改）</span></label>
+    <input type="time" id="manualOut" value="17:45" onfocus="this.select()">
+    <label>备注</label>
+    <input type="text" id="manualNote" placeholder="选填" maxlength="50">
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="toggleManual()">取消</button>
+      <button class="btn-confirm" onclick="manualPunch()">补录并关闭</button>
+      <button class="btn-confirm" onclick="manualPunch(true)" style="background:#475569;">补录并继续</button>
+    </div>
+  </div>
+</div>
+
+<!-- 安装指引按钮 -->
+<div class="install-bar" id="installBar">
+  <span>💾</span>
+  <span class="install-bar-text">安装到桌面，像 App 一样使用</span>
+  <button class="install-bar-btn" onclick="installPWA()">安装</button>
+  <button class="install-bar-close" onclick="dismissInstallBar()">✕</button>
+</div>
+
+<!-- 安装指引弹窗 -->
+<div class="modal-overlay" id="installGuideModal" style="display:none;" onclick="if(event.target===this)closeInstallGuide()">
+  <div class="modal" style="max-width:360px;">
+    <h4>📲 安装到桌面</h4>
+    <div style="font-size:13px;line-height:1.8;">
+      <p style="margin:0 0 8px;font-weight:700;">💻 电脑（Chrome / Edge）：</p>
+      <p style="margin:0 0 14px;color:var(--text-secondary);">地址栏右边找 <span style="background:#dbeafe;padding:2px 8px;border-radius:4px;font-weight:700;">⊕ 安装</span> 图标，点击即可</p>
+      <p style="margin:0 0 8px;font-weight:700;">📱 iPhone / iPad（Safari）：</p>
+      <p style="margin:0 0 4px;color:var(--text-secondary);">1. 点底部 <span style="background:#dbeafe;padding:2px 8px;border-radius:4px;font-weight:700;">分享</span> 按钮</p>
+      <p style="margin:0 0 14px;color:var(--text-secondary);">2. 选「<b>添加到主屏幕</b>」→ 点添加</p>
+      <p style="margin:0 0 8px;font-weight:700;">📱 安卓（Chrome）：</p>
+      <p style="margin:0;color:var(--text-secondary);">自动弹出安装提示，或点菜单 → 安装应用</p>
+    </div>
+    <div class="modal-btns" style="margin-top:16px;">
+      <button class="btn-confirm" onclick="closeInstallGuide()">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- 同步设置弹窗 -->
+<div class="modal-overlay" id="syncModal" style="display:none;">
+  <div class="modal">
+    <h4>☁️ Supabase 云同步</h4>
+    <div id="syncPanelContent"></div>
+    <div class="modal-btns" style="margin-top:12px;">
+      <button class="btn-cancel" onclick="toggleSyncPanel()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 加班/调整时间选择弹窗 -->
+<div class="modal-overlay" id="overtimeModal" style="display:none;" onclick="if(event.target===this)closeOvertimeModal()">
+  <div class="modal" style="max-width:340px;">
+    <h4>⏰ 调整预计下班时间</h4>
+    <div style="font-size:12px;color:var(--muted);text-align:center;margin-bottom:10px;">滑动滚轮或拖动选择时间</div>
+    <div class="wheel-picker" id="wheelPicker">
+      <div>
+        <div class="wheel-label">小时</div>
+        <div style="position:relative;">
+          <div class="wheel-col" id="wheelHour"></div>
+          <div class="wheel-highlight"></div>
+        </div>
+      </div>
+      <div class="wheel-sep">:</div>
+      <div>
+        <div class="wheel-label">分钟</div>
+        <div style="position:relative;">
+          <div class="wheel-col" id="wheelMin"></div>
+          <div class="wheel-highlight"></div>
+        </div>
+      </div>
+    </div>
+    <div class="wheel-actions">
+      <button class="btn-now" onclick="setOvertimeNow()">🕐 现在时间</button>
+      <button class="btn-reset" onclick="resetOvertimeDefault()">↩ 恢复默认</button>
+    </div>
+    <div class="modal-btns" style="margin-top:12px;">
+      <button class="btn-cancel" onclick="closeOvertimeModal()">取消</button>
+      <button class="btn-confirm" onclick="confirmOvertime()">确认调整</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== 常量 =====
+var STORAGE_KEY = 'attendance_records';
+var SYNC_KEY = 'attendance_sync';
+var SUPABASE_URL = 'https://dlsbkyrqydftvqbxxkgk.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_NIkGqRggEDzyaF-QOoYzVw_Kz82Dm_k';
+var TABLE = 'attendance';
+var WORK_MINUTES = 525;
+var TARGET_HOURS = 8.75;
+var HALF_WORK_MINUTES = 240;
+var HALF_TARGET_HOURS = 4.0;
+
+// 打卡时间窗口 (分钟计时)
+var WINDOW = {
+  normal_in:  [360, 600],   // 正常: 6:00-10:00
+  normal_out: [1005, 1300], // 正常: 16:45-21:40
+  half_morning_in:  [765, 825],   // 上午调休: 12:45-13:45
+  half_morning_out: [1005, 1065], // 上午调休: 16:45-17:45
+  half_afternoon_in:  [480, 540],   // 下午调休: 8:00-9:00
+  half_afternoon_out: [720, 780]    // 下午调休: 12:00-13:00
+};
+
+function getPunchWindow(status, type) {
+  if (status === 'leave_morning') {
+    return type === 'in' ? WINDOW.half_morning_in : WINDOW.half_morning_out;
+  }
+  if (status === 'leave_afternoon') {
+    return type === 'in' ? WINDOW.half_afternoon_in : WINDOW.half_afternoon_out;
+  }
+  return type === 'in' ? WINDOW.normal_in : WINDOW.normal_out;
+}
+
+function isHalfDayLeave(status) {
+  return status === 'leave_morning' || status === 'leave_afternoon';
+}
+
+function isFullLeave(status) {
+  return status === 'leave' || status === 'out';
+}
+
+// 工具函数
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+// ===== Supabase 同步模块 =====
+var syncState = {
+  enabled: true,
+  cloudReady: false,
+  supabase: null,
+  syncCode: null,
+  lastPush: 0,
+  lastPull: 0,
+  pushPending: false
+};
+
+// 同步码：生成/读取（格式 PC + 6位）
+function getSyncCode() {
+  var key = 'punch_sync_code';
+  var code = localStorage.getItem(key);
+  if (!code) {
+    // 兼容旧设备ID
+    var oldId = localStorage.getItem('punch_device_id');
+    if (oldId) { code = oldId; localStorage.setItem(key, code); }
+    else {
+      // 生成随机码：PC + 6位大写字母/数字
+      var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      code = 'PC';
+      for (var i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      localStorage.setItem(key, code);
+    }
+  }
+  return code;
+}
+
+// 设置同步码（配对）
+function setSyncCode(newCode) {
+  if (!newCode || !newCode.trim()) return;
+  var code = newCode.trim().toUpperCase();
+  localStorage.setItem('punch_sync_code', code);
+  syncState.syncCode = code;
+  // 重新拉取云端数据
+  updateSyncUI('syncing', '切换同步码...');
+  pullFromSupabase(function() {
+    refreshAll();
+    showToast('已配对！数据已同步', 'success');
+  });
+}
+
+// 保存同步元数据
+function saveSyncMeta() {
+  localStorage.setItem(SYNC_KEY, JSON.stringify({
+    syncCode: syncState.syncCode,
+    lastPush: syncState.lastPush,
+    lastPull: syncState.lastPull,
+    enabled: syncState.enabled
+  }));
+}
+
+function loadSyncMeta() {
+  try {
+    var saved = JSON.parse(localStorage.getItem(SYNC_KEY) || '{}');
+    syncState.lastPush = saved.lastPush || 0;
+    syncState.lastPull = saved.lastPull || 0;
+  } catch(e) {}
+  syncState.syncCode = getSyncCode();
+}
+
+// 获取文档 ID（基于同步码）
+// 初始化 Supabase
+function initSupabase() {
+  updateSyncUI('syncing', '正在连接 Supabase...');
+
+  if (typeof supabase === 'undefined' || !supabase.createClient) {
+    updateSyncUI('error', 'Supabase SDK 加载失败，刷新重试');
+    return;
+  }
+
+  try {
+    syncState.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    syncState.cloudReady = true;
+    syncState.enabled = true;
+    saveSyncMeta();
+    updateSyncUI('synced', '已连接 Supabase ☁️');
+
+    pullFromSupabase(function() {
+      refreshAll();
+      var records = loadRecords();
+      var today = records[todayKey()];
+      if (today && today.in && !today.out && !isFullLeave(today.status)) {
+        scheduleReminder(today.in);
+      }
+    });
+  } catch(e) {
+    console.error('Supabase 初始化失败:', e);
+    updateSyncUI('error', '初始化失败：' + e.message);
+    loadSyncMeta();
+    refreshAll();
+  }
+}
+
+// 推送数据到云端（每天一条独立文档，多设备共享）
+function pushToSupabase(callback) {
+  if (!syncState.cloudReady || !syncState.enabled) return;
+  if (syncState.pushPending) {
+    clearTimeout(window._pushRetryTimer);
+    window._pushRetryTimer = setTimeout(function() { pushToSupabase(callback); }, 1000);
+    return;
+  }
+
+  syncState.pushPending = true;
+  updateSyncUI('syncing', '正在同步...');
+
+  var code = syncState.syncCode;
+  var localRecords = loadRecordsRaw();
+
+  pullSupabaseRecords(code, function(cloudRows) {
+    var merged = mergeFlatRecords(localRecords, cloudRows);
+    saveRecordsLocalOnly(merged);
+    var finalRecords = loadRecordsRaw();
+
+    var dates = Object.keys(finalRecords);
+    if (dates.length === 0) {
+      syncState.lastPush = Date.now();
+      syncState.pushPending = false;
+      saveSyncMeta();
+      updateSyncUI('synced', '已同步 ☁️');
+      if (callback) callback();
+      return;
+    }
+
+    var rows = [];
+    dates.forEach(function(date) {
+      var r = finalRecords[date];
+      rows.push({
+        id: code + '_' + date,
+        sync_code: code,
+        date: date,
+        in: r.in || null,
+        out: r.out || null,
+        note: r.note || '',
+        status: r.status || null,
+        updated_at: r.updatedAt || Date.now(),
+        is_deleted: r.isDeleted || false
+      });
+    });
+
+    syncState.supabase.from(TABLE).upsert(rows, { onConflict: 'id' }).then(function(res) {
+      syncState.lastPush = Date.now();
+      syncState.pushPending = false;
+      saveSyncMeta();
+      if (res.error) {
+        updateSyncUI('error', '推送失败：' + res.error.message);
+      } else {
+        updateSyncUI('synced', '已同步 ☁️');
+      }
+      refreshAll();
+      if (callback) callback();
+    }).catch(function(err) {
+      syncState.pushPending = false;
+      updateSyncUI('error', '推送失败');
+      if (callback) callback();
+    });
+  });
+}
+
+// 拉取云端所有文档（按 syncCode 过滤，兼容无索引场景）
+function pullSupabaseRecords(code, callback) {
+  syncState.supabase.from(TABLE).select('*').eq('sync_code', code).order('date', { ascending: false }).then(function(res) {
+    if (res.error) { callback([]); return; }
+    callback(res.data || []);
+  }).catch(function() { callback([]); });
+}
+
+// 按文档 ID 列表逐条拉取
+
+
+// 兜底方案：扫描最近 N 天，查找匹配同步码的文档（用于无痕模式/新设备）
+
+
+// 检测旧格式并迁移（单文档 records 字段 → 每天一条独立文档）
+
+
+// 合并本地记录和云端扁平文档
+function mergeFlatRecords(localRecords, cloudDocs) {
+  var result = {};
+
+  // 先把所有本地记录放入结果
+  Object.keys(localRecords).forEach(function(date) {
+    result[date] = JSON.parse(JSON.stringify(localRecords[date]));
+  });
+
+  // 用云端数据覆盖（以 updatedAt 为准）
+  cloudDocs.forEach(function(doc) {
+    var date = doc.date || doc._id;
+    if (!date) return;
+
+    var localR = localRecords[date];
+    var cloudUpdated = (doc.updated_at || doc.updatedAt || 0);
+    var localUpdated = localR ? (localR.updatedAt || 0) : 0;
+
+    if (!localR || cloudUpdated > localUpdated) {
+      // 云端更新，采用云端数据
+      result[date] = {
+        in: doc.in || null,
+        out: doc.out || null,
+        note: doc.note || '',
+        status: doc.status || null,
+        isDeleted: !!doc.isDeleted,
+        updatedAt: (doc.updated_at || doc.updatedAt || Date.now())
+      };
+    }
+    // 本地更新 → 保留本地
+  });
+
+  // 清理超过7天的软删除
+  var cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  Object.keys(result).forEach(function(date) {
+    if (result[date].isDeleted && (result[date].updatedAt || 0) < cutoff) {
+      delete result[date];
+    }
+  });
+
+  return result;
+}
+
+// 从云端拉取数据（按 syncCode 查询所有文档）
+function pullFromSupabase(callback) {
+  if (!syncState.cloudReady || !syncState.enabled) {
+    if (callback) callback();
+    return;
+  }
+
+  updateSyncUI('syncing', '正在拉取...');
+
+  pullSupabaseRecords(syncState.syncCode, function(cloudRows) {
+    if (cloudRows.length > 0) {
+      var localRecords = loadRecordsRaw();
+      var merged = mergeFlatRecords(localRecords, cloudRows);
+      saveRecordsLocalOnly(merged);
+      syncState.lastPull = Date.now();
+      saveSyncMeta();
+      updateSyncUI('synced', '已同步 ☁️');
+      pushToSupabase(function() {
+        if (callback) callback();
+      });
+    } else {
+      pushToSupabase(function() {
+        updateSyncUI('synced', '已同步 ☁️');
+        if (callback) callback();
+      });
+    }
+  });
+}
+
+// 只写本地，不触发云端推送
+function saveRecordsLocalOnly(records) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+}
+
+// ===== 更新同步状态栏 =====
+function updateSyncUI(status, msg) {
+  var dot = document.getElementById('syncDot');
+  var label = document.getElementById('syncLabel');
+  dot.className = 'sync-dot ' + status;
+  label.textContent = msg;
+}
+
+// ===== 同步面板 =====
+function toggleSyncPanel() {
+  var modal = document.getElementById('syncModal');
+  var visible = modal.style.display !== 'none';
+  if (visible) {
+    modal.style.display = 'none';
+    return;
+  }
+  modal.style.display = 'flex';
+  renderSyncPanel();
+}
+
+function renderSyncPanel() {
+  var content = document.getElementById('syncPanelContent');
+  var count = Object.keys(loadRecords()).length;
+  var code = syncState.syncCode;
+  var statusHtml = '';
+  if (syncState.cloudReady) {
+    statusHtml = '<div style="color:#a78bfa;font-weight:700;">✅ 已连接云端</div>' +
+      '<div style="font-size:10px;color:var(--muted);">表: ' + TABLE + ' · 每天一条记录</div>';
+  } else {
+    statusHtml = '<div style="color:#ef4444;font-weight:700;">⚠️ 未连接云端</div>' +
+      '<div style="font-size:10px;color:var(--muted);">请先在控制台开启RLS 策略</div>';
+  }
+
+  content.innerHTML =
+    '<div style="margin-bottom:16px;text-align:center;">' +
+      '<span style="font-size:36px;">☁️</span>' +
+      '<div style="font-weight:700;margin-top:4px;font-size:16px;">Supabase 云同步</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:4px;">当前共 ' + count + ' 条记录</div>' +
+    '</div>' +
+
+    // 用户名区域（既是昵称也是配对标识）
+    '<div style="background:#f8fafc;border-radius:12px;padding:16px;margin-bottom:14px;text-align:center;border:1px solid var(--border);">' +
+      '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;font-weight:600;">👤 用户名（相同用户名 = 数据互通）</div>' +
+      '<input id="userNameInput" placeholder="设置你的用户名" style="width:100%;box-sizing:border-box;border:2px solid #a78bfa;background:#fff;color:var(--text);border-radius:8px;padding:10px;font-size:16px;text-align:center;font-weight:600;margin-bottom:8px;">' +
+      '<button onclick="saveUserName()" style="width:100%;border:none;background:linear-gradient(135deg,#a78bfa,#8b5cf6);color:#fff;border-radius:8px;padding:10px;font-size:14px;cursor:pointer;font-weight:700;">💾 保存</button>' +
+      '<div style="margin-top:10px;font-size:11px;color:var(--muted);">在其他设备上输入相同用户名即可配对共享数据</div>' +
+    '</div>' +
+
+    '<div style="margin-bottom:12px;text-align:center;">' + statusHtml + '</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
+      '<button onclick="pullFromSupabase(function(){refreshAll();toggleSyncPanel();showToast(\'已从云端同步\',\'success\');})" style="flex:1;border:none;background:#6366f1;color:#fff;border-radius:8px;padding:12px;font-size:13px;cursor:pointer;font-weight:700;">' +
+        '🔄 手动同步' +
+      '</button>' +
+      '<button onclick="pushToSupabase(function(){toggleSyncPanel();showToast(\'已推送到云端\',\'success\');})" style="flex:1;border:none;background:#a78bfa;color:#fff;border-radius:8px;padding:12px;font-size:13px;cursor:pointer;font-weight:700;">' +
+        '📤 强制推送' +
+      '</button>' +
+    '</div>' +
+    '<div style="text-align:center;font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5;">' +
+      '相同用户名的设备共享同一份数据<br>' +
+      '每次打卡自动同步 · 60秒自动刷新 · 云端可读' +
+    '</div>';
+
+  // 填充当前用户名（仅当已设置时）
+  var isGenerated = /^[A-Z0-9]{6,10}$/.test(code);
+  var userNameInput = document.getElementById('userNameInput');
+  if (userNameInput && !isGenerated) userNameInput.value = code;
+  if (userNameInput && isGenerated) userNameInput.placeholder = '设置用户名（当前: ' + code + '）';
+}
+
+// 保存用户名（替代旧的同步码）
+function saveUserName() {
+  var input = document.getElementById('userNameInput');
+  var name = input.value.trim();
+  if (!name || name.length < 1) { showToast('请输入用户名', 'error'); return; }
+  if (name.length > 20) { showToast('用户名最多20个字符', 'error'); return; }
+  // 只允许中文、英文、数字、下划线
+  if (!/^[\u4e00-\u9fa5a-zA-Z0-9_]+$/.test(name)) {
+    showToast('用户名只能包含中文、英文、数字、下划线', 'error'); return;
+  }
+
+  var oldCode = syncState.syncCode;
+  var isGenerated = /^[A-Z0-9]{6,10}$/.test(oldCode);
+
+  if (name === oldCode && !isGenerated) {
+    // 用户名没变，但可能数据还没拉下来（刚重装），强制从云端拉取
+    if (syncState.cloudReady) {
+      updateSyncUI('syncing', '正在拉取数据...');
+      pullFromSupabase(function() {
+        refreshAll();
+        showToast('数据已同步！', 'success');
+        renderSyncPanel();
+      });
+    } else {
+      showToast('用户名未变化', 'success');
+    }
+    return;
+  }
+
+  // 更新用户名
+  localStorage.setItem('punch_sync_code', name);
+  syncState.syncCode = name;
+  saveSyncMeta();
+
+  function finish() {
+    // 关键修复：无论迁移是否成功，都用新用户名从云端拉取数据
+    if (syncState.cloudReady) {
+      pullFromSupabase(function() {
+        updateSyncUI('synced', '已同步 ☁️');
+        refreshAll();
+        showToast('数据已同步！', 'success');
+        renderSyncPanel();
+      });
+    } else {
+      refreshAll();
+      showToast('用户名已设置！', 'success');
+      renderSyncPanel();
+    }
+  }
+
+  // 如果旧码是默认生成的，尝试迁移旧用户名下的数据
+  if (syncState.cloudReady && isGenerated && oldCode !== name) {
+    updateSyncUI('syncing', '正在查找数据...');
+    migrateUserName(oldCode, name, finish);
+  } else {
+    finish();
+  }
+}
+
+// 迁移：将旧用户名下的文档复制到新用户名，然后删除旧文档
+function migrateUserName(oldCode, newCode, callback) {
+  pullSupabaseRecords(oldCode, function(docs) {
+    if (docs.length === 0) { callback(); return; }
+
+    // 构建新的 rows
+    var rows = [];
+    var oldIds = [];
+    docs.forEach(function(doc) {
+      var date = doc.date;
+      if (!date) return;
+      oldIds.push(oldCode + '_' + date);
+      rows.push({
+        id: newCode + '_' + date,
+        sync_code: newCode,
+        date: date,
+        in: doc.in || null,
+        out: doc.out || null,
+        note: doc.note || '',
+        status: doc.status || null,
+        updated_at: doc.updated_at || doc.updatedAt || Date.now(),
+        is_deleted: doc.is_deleted || false
+      });
+    });
+
+    if (rows.length === 0) { callback(); return; }
+
+    // 批量写入新记录
+    syncState.supabase.from(TABLE).upsert(rows, { onConflict: 'id' }).then(function() {
+      // 删除旧记录
+      if (oldIds.length > 0) {
+        syncState.supabase.from(TABLE).delete().in('id', oldIds).then(function() {
+          callback();
+        }).catch(function() { callback(); });
+      } else {
+        callback();
+      }
+    }).catch(function() { callback(); });
+  });
+}
+
+// ===== 数据管理（双写：本地 + 云端） =====
+function loadRecords() {
+  try {
+    var raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    // 过滤掉软删除的记录（isDeleted: true）以及空记录
+    var clean = {};
+    Object.keys(raw).forEach(function(k) {
+      var r = raw[k];
+      // 墓碑直接跳过
+      if (r.isDeleted) return;
+      // 没有任何有效数据也跳过（in/out/status 都没有）
+      if (!r.in && !r.out && !r.status) return;
+      clean[k] = r;
+    });
+    return clean;
+  }
+  catch(e) { return {}; }
+}
+
+// 读取原始数据（含软删除标记，供同步使用）
+function loadRecordsRaw() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+  catch(e) { return {}; }
+}
+
+function saveRecords(records) {
+  // 标记更新时间
+  var keys = Object.keys(records);
+  // 不修改 records 原对象，直接保存
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+
+  // 自动推送到云端（延迟 800ms，避免频繁请求）
+  if (syncState.cloudReady) {
+    clearTimeout(window._pushTimer);
+    window._pushTimer = setTimeout(function() { pushToSupabase(); }, 800);
+  }
+}
+
+function todayKey() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function nowStr() {
+  var d = new Date();
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+
+function nowFullStr() {
+  return nowStr() + ':' + String(new Date().getSeconds()).padStart(2,'0');
+}
+
+function timeToMinutes(str) {
+  if (!str) return null;
+  var parts = str.split(':');
+  return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+}
+
+function minutesToTime(mins) {
+  var h = Math.floor(mins / 60);
+  var m = mins % 60;
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+}
+
+function calcHours(inStr, outStr) {
+  if (!inStr || !outStr) return null;
+  var mins = timeToMinutes(outStr) - timeToMinutes(inStr);
+  return Math.max(0, mins / 60);
+}
+
+function formatHours(h) {
+  if (h === null || h === undefined) return '--';
+  var hrs = Math.floor(h);
+  var mins = Math.round((h - hrs) * 60);
+  if (mins === 0) return hrs + 'h';
+  return hrs + 'h' + mins + 'm';
+}
+
+function getPeriod() {
+  var h = new Date().getHours();
+  var m = new Date().getMinutes();
+  var t = h * 60 + m;
+  if (t >= 360 && t < 600)  return 'morning';      //  6:00 - 10:00 上班打卡时段
+  if (t >= 600 && t < 1005) return 'work';          // 10:00 - 16:45 工作中
+  if (t >= 1005 && t < 1300) return 'afternoon';    // 16:45 - 21:40 下班打卡时段
+  if (t >= 1300) return 'overtime';                 // 21:40+ 过下班时段
+  return 'off';
+}
+
+// ===== 请假/外出 =====
+function setStatus(status) {
+  var records = loadRecords();
+  var key = todayKey();
+  if (!records[key]) records[key] = { in: null, out: null, note: '', status: null };
+  records[key].status = status;
+  records[key].updatedAt = Date.now();
+  saveRecords(records);
+
+  var msg = '';
+  if (status === 'leave') msg = '已标记为全天调休';
+  else if (status === 'leave_morning') msg = '已标记为上午调休(下午上班)';
+  else if (status === 'leave_afternoon') msg = '已标记为下午调休(上午上班)';
+  else if (status === 'out') msg = '已标记为外出';
+  else msg = '已恢复为正常出勤';
+  showToast(msg, 'success');
+
+  // 设置半日调休状态时，如有已有打卡，更新提醒时间
+  if (isHalfDayLeave(status) && records[key].in) {
+    scheduleReminder(records[key].in);
+  }
+
+  refreshAll();
+}
+
+// ===== 打卡 =====
+function punch(type) {
+  var records = loadRecords();
+  var key = todayKey();
+  if (!records[key]) records[key] = { in: null, out: null, note: '', status: null };
+
+  var time = nowStr();
+  var status = records[key].status;
+
+  if (type === 'in') {
+    // 全天请假/外出 → 禁止
+    if (isFullLeave(status)) {
+      showToast('当前标记为' + (status === 'leave' ? '全天调休' : '外出') + '，请先切换为正常出勤', 'warn');
+      return;
+    }
+    if (records[key].in) {
+      showToast('今天已经打过上班卡了', 'warn');
+      return;
+    }
+    records[key].in = time;
+    records[key].updatedAt = Date.now();
+
+    // 打上班卡时，如果是正常出勤状态，清除可能的半日调休状态
+    if (!isHalfDayLeave(status)) {
+      records[key].status = null;
+    }
+
+    saveRecords(records);
+    scheduleReminder(time);
+    showToast('上班打卡成功！' + time + '  预计下班 ' + calcTargetOut(time), 'success');
+  } else {
+    // 全天请假/外出 → 禁止
+    if (isFullLeave(status)) {
+      showToast('当前标记为' + (status === 'leave' ? '全天调休' : '外出') + '，无需打卡', 'warn');
+      return;
+    }
+    if (!records[key].in) {
+      showToast('请先打上班卡', 'warn');
+      return;
+    }
+    if (records[key].out) {
+      showToast('今天已经打过下班卡了', 'warn');
+      return;
+    }
+    records[key].out = time;
+    records[key].updatedAt = Date.now();
+    saveRecords(records);
+    clearReminders();
+    var h = calcHours(records[key].in, time);
+    showToast('下班打卡成功！工时 ' + formatHours(h), 'success');
+  }
+
+  refreshAll();
+}
+
+function calcTargetOut(inTime) {
+  var inMins = timeToMinutes(inTime);
+  var records = loadRecords();
+  var today = records[todayKey()] || { status: null };
+  var addMins = isHalfDayLeave(today.status) ? HALF_WORK_MINUTES : WORK_MINUTES;
+  return minutesToTime(inMins + addMins);
+}
+
+// ===== 提醒系统 =====
+var reminderInterval = null;
+var targetOutMins = null;
+var targetOutTime = null;
+var notified5min = false;
+var notifiedNow = false;
+var titleFlashInterval = null;
+
+function scheduleReminder(inTime) {
+  clearReminders();
+  var inMins = timeToMinutes(inTime);
+  targetOutMins = inMins + WORK_MINUTES;
+  targetOutTime = minutesToTime(targetOutMins);
+  notified5min = false;
+  notifiedNow = false;
+  // 不再自动弹通知权限请求，仅当用户之前已授权时才使用系统通知
+  reminderInterval = setInterval(checkReminder, 10000);
+  checkReminder();
+  updateTargetDisplay();
+}
+
+function checkReminder() {
+  if (targetOutMins === null) return;
+  var now = new Date();
+  var nowMins = now.getHours() * 60 + now.getMinutes();
+  var remainMins = targetOutMins - nowMins;
+
+  if (remainMins <= 5 && remainMins > 0 && !notified5min) {
+    notified5min = true;
+    notifyUser('还有5分钟到下班时间 ' + targetOutTime + '，准备打卡吧~');
+  }
+  if (remainMins <= 0 && !notifiedNow) {
+    notifiedNow = true;
+    notifyUser('到下班时间啦！' + targetOutTime + '，记得打卡下班~');
+    startTitleFlash();
+  }
+  updateTargetDisplay();
+}
+
+function updateTargetDisplay() {
+  var el = document.getElementById('targetTime');
+  if (!targetOutTime) {
+    el.style.display = 'none';
+    return;
+  }
+  var now = new Date();
+  var nowMins = now.getHours() * 60 + now.getMinutes();
+  var remainMins = targetOutMins - nowMins;
+  var adjBtn = ' <span class="adjust-btn" onclick="event.stopPropagation();adjustOvertime()">我要加班 / 调整</span>';
+  el.style.display = 'block';
+  if (remainMins <= 0) {
+    el.innerHTML = '⏰ 已到下班时间 <b>' + targetOutTime + '</b>，快快打卡！' + adjBtn;
+    el.className = 'target-time urgent';
+  } else if (remainMins <= 5) {
+    el.innerHTML = '🔔 即将下班！预计 <b>' + targetOutTime + '</b><span class="small">还剩 ' + remainMins + ' 分钟</span>' + adjBtn;
+    el.className = 'target-time urgent';
+  } else if (remainMins <= 60) {
+    el.innerHTML = '⏳ 预计下班 <b>' + targetOutTime + '</b><span class="small">还剩 ' + remainMins + ' 分钟</span>' + adjBtn;
+    el.className = 'target-time';
+  } else {
+    var hh = Math.floor(remainMins / 60);
+    var mm = remainMins % 60;
+    el.innerHTML = '预计下班 <b>' + targetOutTime + '</b><span class="small">还剩 ' + hh + '小时' + (mm > 0 ? mm + '分钟' : '') + '</span>' + adjBtn;
+    el.className = 'target-time';
+  }
+}
+
+function startTitleFlash() {
+  if (titleFlashInterval) return;
+  var origTitle = document.title;
+  var flash = true;
+  titleFlashInterval = setInterval(function() {
+    document.title = flash ? '⏰ 该下班打卡了！' : origTitle;
+    flash = !flash;
+  }, 50);
+}
+
+function stopTitleFlash() {
+  if (titleFlashInterval) {
+    clearInterval(titleFlashInterval);
+    titleFlashInterval = null;
+  }
+  document.title = 'Tick — 智能打卡';
+}
+
+// ===== 加班/调整时间：滚轮选择器 =====
+
+var wheelHourVal = 18, wheelMinVal = 0;
+var wheelHourEl, wheelMinEl;
+var wheelTimer = null;
+
+function openOvertimeModal() {
+  var modal = document.getElementById('overtimeModal');
+  if (!modal) return;
+  // 初始化默认值：当前目标时间或默认下班时间
+  if (targetOutTime) {
+    var parts = targetOutTime.split(':');
+    wheelHourVal = parseInt(parts[0]) || 18;
+    wheelMinVal = parseInt(parts[1]) || 0;
+  } else {
+    wheelHourVal = 18;
+    wheelMinVal = 0;
+  }
+  buildWheel();
+  modal.style.display = 'flex';
+  // 滚动到选中值
+  setTimeout(function() { scrollWheelTo(wheelHourEl, wheelHourVal); scrollWheelTo(wheelMinEl, wheelMinVal); }, 80);
+}
+
+function closeOvertimeModal() {
+  document.getElementById('overtimeModal').style.display = 'none';
+}
+
+function buildWheel() {
+  wheelHourEl = document.getElementById('wheelHour');
+  wheelMinEl = document.getElementById('wheelMin');
+  if (!wheelHourEl || !wheelMinEl) return;
+
+  var hourHTML = '';
+  for (var h = 0; h < 24; h++) {
+    hourHTML += '<div class="wheel-item" data-val="' + h + '">' + pad(h) + '</div>';
+  }
+  wheelHourEl.innerHTML = hourHTML;
+
+  var minHTML = '';
+  for (var m = 0; m < 60; m += 5) {
+    minHTML += '<div class="wheel-item" data-val="' + m + '">' + pad(m) + '</div>';
+  }
+  wheelMinEl.innerHTML = minHTML;
+
+  // 滚轮事件监听
+  wheelHourEl.onscroll = function() { onWheelScroll('hour'); };
+  wheelMinEl.onscroll = function() { onWheelScroll('min'); };
+
+  // 鼠标拖动支持
+  addDragScroll(wheelHourEl, 'hour');
+  addDragScroll(wheelMinEl, 'min');
+}
+
+var dragData = {};
+
+function addDragScroll(el, type) {
+  el.style.cursor = 'grab';
+  el.addEventListener('mousedown', function(e) {
+    dragData[type] = { startY: e.clientY, startScroll: el.scrollTop, dragging: true };
+    el.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+}
+
+document.addEventListener('mousemove', function(e) {
+  for (var type in dragData) {
+    var d = dragData[type];
+    if (!d || !d.dragging) continue;
+    var el = type === 'hour' ? wheelHourEl : wheelMinEl;
+    if (!el) continue;
+    var dy = e.clientY - d.startY;
+    el.scrollTop = d.startScroll - dy;
+  }
+});
+
+document.addEventListener('mouseup', function() {
+  for (var type in dragData) {
+    if (dragData[type] && dragData[type].dragging) {
+      dragData[type].dragging = false;
+      var el = type === 'hour' ? wheelHourEl : wheelMinEl;
+      if (el) { el.style.cursor = 'grab'; snapWheel(type); highlightActive(); }
+    }
+  }
+});
+
+function onWheelScroll(type) {
+  if (wheelTimer) clearTimeout(wheelTimer);
+  wheelTimer = setTimeout(function() {
+    snapWheel(type);
+    highlightActive();
+  }, 120);
+}
+
+function snapWheel(type) {
+  var el = type === 'hour' ? wheelHourEl : wheelMinEl;
+  var itemHeight = 40;
+  var scrollTop = el.scrollTop;
+  var index = Math.round(scrollTop / itemHeight);
+  el.scrollTo({ top: index * itemHeight, behavior: 'smooth' });
+}
+
+function scrollWheelTo(el, val) {
+  var itemHeight = 40;
+  var index = el === wheelMinEl ? Math.floor(val / 5) : val;
+  el.scrollTo({ top: index * itemHeight, behavior: 'auto' });
+}
+
+function highlightActive() {
+  if (!wheelHourEl || !wheelMinEl) return;
+  var itemHeight = 40;
+  var hIdx = Math.round(wheelHourEl.scrollTop / itemHeight);
+  var mIdx = Math.round(wheelMinEl.scrollTop / itemHeight);
+  wheelHourVal = hIdx;
+  wheelMinVal = mIdx * 5;
+
+  // 高亮
+  var hItems = wheelHourEl.querySelectorAll('.wheel-item');
+  var mItems = wheelMinEl.querySelectorAll('.wheel-item');
+  for (var i = 0; i < hItems.length; i++) {
+    hItems[i].classList.toggle('active', i === hIdx);
+  }
+  for (var j = 0; j < mItems.length; j++) {
+    mItems[j].classList.toggle('active', j === mIdx);
+  }
+}
+
+function setOvertimeNow() {
+  var now = new Date();
+  wheelHourVal = now.getHours();
+  wheelMinVal = Math.floor(now.getMinutes() / 5) * 5;
+  scrollWheelTo(wheelHourEl, wheelHourVal);
+  scrollWheelTo(wheelMinEl, wheelMinVal);
+  setTimeout(highlightActive, 100);
+}
+
+function resetOvertimeDefault() {
+  var records = loadRecords();
+  var today = records[todayKey()];
+  if (today && today.in) {
+    var parts = today.in.split(':');
+    var inMins = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    var outMins = inMins + WORK_MINUTES;
+    wheelHourVal = Math.floor(outMins / 60);
+    wheelMinVal = Math.floor((outMins % 60) / 5) * 5;
+    scrollWheelTo(wheelHourEl, wheelHourVal);
+    scrollWheelTo(wheelMinEl, wheelMinVal);
+    setTimeout(highlightActive, 100);
+  }
+}
+
+function confirmOvertime() {
+  highlightActive();
+  var hh = wheelHourVal, mm = wheelMinVal;
+  targetOutMins = hh * 60 + mm;
+  targetOutTime = pad(hh) + ':' + pad(mm);
+  notified5min = false;
+  notifiedNow = false;
+  stopTitleFlash();
+  if (reminderInterval) clearInterval(reminderInterval);
+  reminderInterval = setInterval(checkReminder, 10000);
+  checkReminder();
+  updateTargetDisplay();
+  refreshToday();
+  closeOvertimeModal();
+  showToast('已调整预计下班为 ' + targetOutTime + '，到点会提醒', 'success');
+}
+
+// 旧版 adjustOvertime() 改为打开弹窗
+function adjustOvertime() {
+  openOvertimeModal();
+}
+
+function clearReminders() {
+  if (reminderInterval) {
+    clearInterval(reminderInterval);
+    reminderInterval = null;
+  }
+  stopTitleFlash();
+  targetOutTime = null;
+  targetOutMins = null;
+  notified5min = false;
+  notifiedNow = false;
+  document.getElementById('targetTime').style.display = 'none';
+}
+
+function notifyUser(msg) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try { new Notification('上下班打卡提醒', { body: msg, icon: '📌', tag: 'attendance' }); } catch(e) {}
+  }
+  showToast(msg, 'warn');
+}
+
+// ===== 手动补录 =====
+function manualPunch(stayOpen) {
+  var date = document.getElementById('manualDate').value;
+  var status = document.getElementById('manualStatus').value;
+  var inTime = document.getElementById('manualIn').value;
+  var outTime = document.getElementById('manualOut').value;
+  var note = document.getElementById('manualNote').value;
+
+  if (!date) { showToast('请选择日期', 'warn'); return; }
+
+  var records = loadRecords();
+  records[date] = { in: null, out: null, note: '', status: status || null };
+
+  if (status === 'leave' || status === 'out') {
+    // 全天调休/外出不需要打卡时间
+  } else {
+    if (!inTime && !outTime) { showToast('请至少填写一个时间', 'warn'); return; }
+    if (inTime) records[date].in = inTime;
+    if (outTime) records[date].out = outTime;
+  }
+  if (note) records[date].note = note;
+  records[date].updatedAt = Date.now();
+
+  saveRecords(records);
+
+  // 判断是否需要启动提醒（全天调休/外出不需要）
+  if (date === todayKey() && inTime && !outTime && !isFullLeave(status)) {
+    scheduleReminder(inTime);
+  }
+
+  showToast('补录成功：' + date + (inTime ? ' ' + inTime : '') + (outTime ? '→' + outTime : ''), 'success');
+
+  if (stayOpen) {
+    var d = new Date(date);
+    d.setDate(d.getDate() + 1);
+    document.getElementById('manualDate').value = d.getFullYear() + '-' +
+      String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    refreshAll();
+  } else {
+    toggleManual();
+    refreshAll();
+  }
+}
+
+function autoCalcOut() {
+  if (window._skipAutoCalc || window._onlyInMode) return;
+  var inVal = document.getElementById('manualIn').value;
+  if (!inVal) return;
+  var status = document.getElementById('manualStatus').value;
+  var addMins = isHalfDayLeave(status) ? HALF_WORK_MINUTES : WORK_MINUTES;
+  var parts = inVal.split(':');
+  var totalMins = parseInt(parts[0]) * 60 + parseInt(parts[1]) + addMins;
+  document.getElementById('manualOut').value = minutesToTime(totalMins);
+}
+
+function quickFillAll() {
+  window._onlyInMode = false;
+  document.getElementById('manualDate').value = todayKey();
+  document.getElementById('manualStatus').value = '';
+  document.getElementById('manualIn').value = '09:00';
+  document.getElementById('manualIn').dispatchEvent(new Event('input'));
+  document.getElementById('manualNote').value = '';
+}
+
+function quickFillInOnly() {
+  document.getElementById('manualDate').value = todayKey();
+  document.getElementById('manualStatus').value = '';
+  document.getElementById('manualNote').value = '';
+  document.getElementById('manualOut').value = '';
+  document.getElementById('manualIn').value = '09:05';
+  window._onlyInMode = true;
+}
+
+function onStatusChange() {
+  var st = document.getElementById('manualStatus').value;
+  var isFullNonWork = (st === 'leave' || st === 'out');
+  var isHalf = isHalfDayLeave(st);
+  
+  document.getElementById('manualIn').disabled = isFullNonWork;
+  document.getElementById('manualOut').disabled = isFullNonWork;
+  
+  if (isFullNonWork) {
+    document.getElementById('manualIn').value = '';
+    document.getElementById('manualOut').value = '';
+  } else if (isHalf) {
+    // 半日调休: 提供默认打卡时间
+    if (st === 'leave_morning') {
+      document.getElementById('manualIn').value = '13:00';
+      document.getElementById('manualOut').value = '17:00';
+    } else {
+      document.getElementById('manualIn').value = '09:00';
+      document.getElementById('manualOut').value = '12:00';
+    }
+  } else {
+    document.getElementById('manualIn').value = '09:00';
+    document.getElementById('manualIn').dispatchEvent(new Event('input'));
+  }
+}
+
+function toggleManual() {
+  var modal = document.getElementById('manualModal');
+  var visible = modal.style.display !== 'none';
+  modal.style.display = visible ? 'none' : 'flex';
+  if (!visible) {
+    window._onlyInMode = false;
+    document.getElementById('manualDate').value = todayKey();
+    document.getElementById('manualStatus').value = '';
+    document.getElementById('manualIn').disabled = false;
+    document.getElementById('manualOut').disabled = false;
+    document.getElementById('manualIn').value = '09:00';
+    document.getElementById('manualNote').value = '';
+    autoCalcOut();
+  }
+}
+
+// ===== 备注 =====
+function saveNote() {
+  var note = document.getElementById('noteInput').value.trim();
+  var records = loadRecords();
+  var key = todayKey();
+  if (!records[key]) records[key] = { in: null, out: null, note: '', status: null };
+  records[key].note = note;
+  records[key].updatedAt = Date.now();
+  saveRecords(records);
+  showToast('备注已保存', 'success');
+  refreshAll();
+}
+
+// ===== 删除（软删除，支持双向同步） =====
+function resetToday() {
+  var records = loadRecordsRaw();
+  var key = todayKey();
+  records[key] = { isDeleted: true, updatedAt: Date.now() };
+  saveRecords(records);
+  clearReminders();
+  showToast('已清除今日记录', 'success');
+  refreshAll();
+}
+
+function deleteRecord(date) {
+  if (!confirm('确定删除 ' + date + ' 的打卡记录吗？此操作不可恢复。')) return;
+  var records = loadRecordsRaw();
+  records[date] = { isDeleted: true, updatedAt: Date.now() };
+  saveRecords(records);
+  showToast('已删除', 'success');
+  refreshAll();
+}
+
+// ===== 导出 =====
+function exportCSV() {
+  var records = loadRecords();
+  var keys = Object.keys(records).sort();
+  if (keys.length === 0) { showToast('没有数据可导出', 'warn'); return; }
+
+  var csv = '日期,状态,上班时间,下班时间,工时(h),备注\n';
+  keys.forEach(function(k) {
+    var r = records[k];
+    var statusLabel;
+    if (r.status === 'leave') statusLabel = '全天调休';
+    else if (r.status === 'leave_morning') statusLabel = '上午调休';
+    else if (r.status === 'leave_afternoon') statusLabel = '下午调休';
+    else if (r.status === 'out') statusLabel = '外出';
+    else statusLabel = '正常';
+
+    var hoursStr = '';
+    if (r.status === 'leave' || r.status === 'out') {
+      hoursStr = '-';
+    } else if (r.in && r.out) {
+      hoursStr = calcHours(r.in, r.out).toFixed(2);
+    } else {
+      hoursStr = '';
+    }
+    csv += [k, statusLabel, r.in||'', r.out||'', hoursStr, (r.note||'')].join(',') + '\n';
+  });
+
+  var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = '考勤记录_' + todayKey() + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('导出成功', 'success');
+}
+
+// ===== UI 刷新 =====
+function refreshAll() {
+  var fns = [refreshClock, refreshButtons, refreshCountdown, refreshToday, refreshHistory, refreshStats];
+  for (var i = 0; i < fns.length; i++) {
+    try { fns[i](); } catch(e) { console.warn('refresh error:', e); }
+  }
+}
+
+function refreshClock() {
+  var now = new Date();
+  document.getElementById('timeDisplay').textContent = nowFullStr();
+  var days = ['日','一','二','三','四','五','六'];
+  var y = now.getFullYear(); var m = now.getMonth() + 1; var d = now.getDate();
+  document.getElementById('dateLabel').textContent = y + '年' + m + '月' + d + '日';
+  document.getElementById('weekdayLabel').textContent = '星期' + days[now.getDay()];
+  var period = getPeriod();
+  var tag = document.getElementById('periodTag');
+  var map = {
+    morning: ['上班打卡时段 6:00-10:00','morning'],
+    work: ['工作中 10:00-16:45','work'],
+    afternoon: ['下班打卡时段 16:45-21:40','afternoon'],
+    overtime: ['已过下班时间','overtime'],
+    off: ['非工作时间','off']
+  };
+  tag.textContent = map[period][0];
+  tag.className = 'period-tag ' + map[period][1];
+}
+
+function refreshButtons() {
+  var records = loadRecords();
+  var key = todayKey();
+  var today = records[key] || { in: null, out: null, status: null };
+  var btnIn = document.getElementById('btnPunchIn');
+  var btnOut = document.getElementById('btnPunchOut');
+  var hint = document.getElementById('punchHint');
+  var status = today.status;
+  var now = new Date().getHours() * 60 + new Date().getMinutes();
+
+  // 上班按钮
+  if (today.in) {
+    btnIn.disabled = true;
+    btnIn.innerHTML = '已打卡 ✓<span class="small">' + today.in + '</span>';
+  } else if (isFullLeave(status)) {
+    btnIn.disabled = true;
+    btnIn.innerHTML = '上班打卡<span class="small">调休/外出中</span>';
+  } else {
+    var inWin = getPunchWindow(status, 'in');
+    btnIn.disabled = !(now >= inWin[0] && now < inWin[1]);
+    var inLabel = status === 'leave_morning' ? '12:45 - 13:45' :
+                  status === 'leave_afternoon' ? '8:00 - 9:00' : '6:00 - 10:00';
+    btnIn.innerHTML = '上班打卡<span class="small">' + inLabel + '</span>';
+  }
+
+  // 下班按钮
+  if (today.out) {
+    btnOut.disabled = true;
+    btnOut.innerHTML = '已打卡 ✓<span class="small">' + today.out + '</span>';
+  } else if (isFullLeave(status)) {
+    btnOut.disabled = true;
+    btnOut.innerHTML = '下班打卡<span class="small">调休/外出中</span>';
+  } else if (!today.in) {
+    btnOut.disabled = true;
+    btnOut.innerHTML = '下班打卡<span class="small">先打上班卡</span>';
+  } else {
+    var outWin = getPunchWindow(status, 'out');
+    btnOut.disabled = !(now >= outWin[0] && now < outWin[1]);
+    var outLabel = status === 'leave_morning' ? '16:45 - 17:45' :
+                   status === 'leave_afternoon' ? '12:00 - 13:00' : '16:45 - 21:40';
+    btnOut.innerHTML = '下班打卡<span class="small">' + outLabel + '</span>';
+  }
+
+  // Hint
+  if (isFullLeave(status)) {
+    hint.textContent = status === 'leave' ? '今日全天调休，无需打卡' : '今日外出，无需打卡';
+  } else if (status === 'leave_morning') {
+    hint.textContent = today.in ? '上午调休，下午已打卡' : '上午调休，请在 12:45-13:45 打卡上班';
+  } else if (status === 'leave_afternoon') {
+    hint.textContent = today.in ? '下午调休，上午已打卡' : '下午调休，请在 8:00-9:00 打卡上班';
+  } else if (today.in && today.out) {
+    hint.textContent = '今天已完成打卡 ✓';
+  } else if (today.in && !today.out) {
+    hint.textContent = '已打上班卡，等待下班打卡';
+  } else {
+    hint.textContent = '';
+  }
+
+  // 状态按钮激活态
+  document.getElementById('statusNormal').className = 'status-btn' + (!status ? ' active-normal' : '');
+  document.getElementById('statusLeave').className = 'status-btn' + (status === 'leave' ? ' active-leave' : '');
+  document.getElementById('statusOut').className = 'status-btn' + (status === 'out' ? ' active-out' : '');
+  document.getElementById('statusLeaveMorning').className = 'status-btn half-btn' + (status === 'leave_morning' ? ' active-leave-morning' : '');
+  document.getElementById('statusLeaveAfternoon').className = 'status-btn half-btn' + (status === 'leave_afternoon' ? ' active-leave-afternoon' : '');
+}
+
+function refreshCountdown() {
+  try {
+    if (targetOutMins !== null) {
+      updateTargetDisplay();
+    } else {
+      // 同步后自动从当天记录恢复预计下班时间
+      var records = loadRecords();
+      var today = records[todayKey()];
+      if (today && today.in && !today.out && !isFullLeave(today.status)) {
+        scheduleReminder(today.in);
+      }
+    }
+  } catch(e) {}
+}
+
+function refreshToday() {
+  var records = loadRecords();
+  var key = todayKey();
+  var today = records[key] || { in: null, out: null, note: '', status: null };
+
+  document.getElementById('todayIn').textContent = today.in || '--:--';
+  document.getElementById('todayIn').className = 'value' + (today.in ? '' : ' empty');
+
+  var isWorking = today.in && !today.out && !isFullLeave(today.status);
+
+  if (isWorking) {
+    var estOut = targetOutTime || calcTargetOut(today.in);
+    document.getElementById('todayOut').textContent = '预计 ' + estOut;
+    document.getElementById('todayOut').className = 'value expected';
+    var targetH = isHalfDayLeave(today.status) ? HALF_TARGET_HOURS : TARGET_HOURS;
+    document.getElementById('todayHours').textContent = '预计 ' + formatHours(targetH);
+    document.getElementById('todayHours').className = 'value expected';
+  } else {
+    document.getElementById('todayOut').textContent = today.out || '--:--';
+    document.getElementById('todayOut').className = 'value' + (today.out ? '' : ' empty');
+    var h2 = isFullLeave(today.status) ? null : calcHours(today.in, today.out);
+    document.getElementById('todayHours').textContent = formatHours(h2);
+    document.getElementById('todayHours').className = 'value' + (h2 !== null ? '' : ' empty');
+  }
+
+  var badge = document.getElementById('todayBadge');
+  if (today.status === 'leave') {
+    badge.innerHTML = '<span class="status-badge leave">全天调休</span>';
+  } else if (today.status === 'leave_morning') {
+    badge.innerHTML = '<span class="status-badge leave_morning">上午调休</span>';
+  } else if (today.status === 'leave_afternoon') {
+    badge.innerHTML = '<span class="status-badge leave_afternoon">下午调休</span>';
+  } else if (today.status === 'out') {
+    badge.innerHTML = '<span class="status-badge out">外出</span>';
+  } else if (today.in && today.out) {
+    var worked = calcHours(today.in, today.out);
+    var targetH = isHalfDayLeave(today.status) ? HALF_TARGET_HOURS : TARGET_HOURS;
+    var ok = worked >= targetH;
+    badge.innerHTML = '<span class="hours-badge ' + (ok ? 'ok' : 'short') + '">' +
+      (ok ? '达标 ✓' : '差' + formatHours(targetH - worked)) + '</span>';
+  } else {
+    badge.innerHTML = '';
+  }
+
+  document.getElementById('noteInput').value = today.note || '';
+}
+
+function refreshHistory() {
+  var records = loadRecords();
+  var keys = Object.keys(records).sort().reverse().slice(0, 30);
+  var tbody = document.getElementById('historyBody');
+
+  if (keys.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">暂无记录</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = keys.map(function(k) {
+    var r = records[k];
+    var isLeave = r.status === 'leave';
+    var isOut = r.status === 'out';
+    var isHalfMorning = r.status === 'leave_morning';
+    var isHalfAfternoon = r.status === 'leave_afternoon';
+    var isHalf = isHalfMorning || isHalfAfternoon;
+    var h = (isLeave || isOut) ? null : calcHours(r.in, r.out);
+    var hoursStr = formatHours(h);
+    var isToday = k === todayKey();
+
+    var statusHtml = '';
+    if (isLeave) statusHtml = '<span style="color:#a855f7;font-weight:700;">全天调休</span>';
+    else if (isHalfMorning) statusHtml = '<span style="color:#f59e0b;font-weight:700;">上午调休</span>';
+    else if (isHalfAfternoon) statusHtml = '<span style="color:#f59e0b;font-weight:700;">下午调休</span>';
+    else if (isOut) statusHtml = '<span style="color:#ea580c;font-weight:700;">外出</span>';
+    else if (!r.in || !r.out) statusHtml = '<span class="incomplete">缺卡</span>';
+    else statusHtml = '<span style="color:#a78bfa;font-weight:600;">正常</span>';
+
+    return '<tr' + (isToday ? ' style="background:#f5f3ff;"' : '') + '>' +
+      '<td>' + k + (isToday ? ' 📍' : '') + '</td>' +
+      '<td>' + (r.in || '-') + '</td>' +
+      '<td>' + (r.out || '-') + '</td>' +
+      '<td>' + hoursStr + '</td>' +
+      '<td>' + statusHtml + '</td>' +
+      '<td class="note-cell" title="' + (r.note||'') + '">' + (r.note||'') + '</td>' +
+      '<td><button class="delete-btn" onclick="deleteRecord(\'' + k + '\')">✕</button></td>' +
+      '</tr>';
+  }).join('');
+}
+
+function refreshStats() {
+  var records = loadRecords();
+  var now = new Date();
+  var thisMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var monthKeys = Object.keys(records).filter(function(k) { return k.indexOf(thisMonth) === 0; });
+  var workDays = 0, totalHours = 0;
+  var fullLeaveDays = 0, halfLeaveDays = 0, outDays = 0;
+
+  monthKeys.forEach(function(k) {
+    var r = records[k];
+    if (r.status === 'leave') { fullLeaveDays++; return; }
+    if (r.status === 'leave_morning' || r.status === 'leave_afternoon') {
+      halfLeaveDays++;
+      if (r.in && r.out) { totalHours += calcHours(r.in, r.out) || 0; }
+      return;
+    }
+    if (r.status === 'out') { outDays++; return; }
+    if (r.in && r.out) {
+      workDays++;
+      totalHours += calcHours(r.in, r.out) || 0;
+    }
+  });
+
+  document.getElementById('statDays').textContent = workDays;
+  document.getElementById('statTotal').textContent = totalHours.toFixed(1) + 'h';
+  document.getElementById('statLeave').textContent = (fullLeaveDays + halfLeaveDays * 0.5).toFixed(1);
+  document.getElementById('statOut').textContent = outDays;
+
+  // 更新月份标签
+  var monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  var label = document.getElementById('statsMonthLabel');
+  if (label) label.textContent = monthNames[now.getMonth()];
+}
+
+// ===== Toast =====
+var toastTimer;
+function showToast(msg, type) {
+  var toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = 'toast ' + type + ' show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { toast.className = 'toast'; }, 2500);
+}
+
+// ===== 初始化 =====
+function init() {
+  loadSyncMeta();
+  refreshAll();
+
+  // 绑定时间选择器自动关闭
+  var inTimer = null, outTimer = null;
+  var inEl = document.getElementById('manualIn');
+  var outEl = document.getElementById('manualOut');
+  if (inEl) {
+    inEl.addEventListener('input', function() {
+      clearTimeout(inTimer);
+      inTimer = setTimeout(function() { inEl.blur(); }, 50);
+    });
+  }
+  if (outEl) {
+    outEl.addEventListener('input', function() {
+      clearTimeout(outTimer);
+      outTimer = setTimeout(function() { outEl.blur(); }, 50);
+    });
+  }
+
+  // 初始化 Supabase（异步，不阻塞页面）
+  initSupabase();
+}
+
+init();
+setInterval(refreshClock, 1000);
+
+// 每60秒自动拉取云端数据
+setInterval(function() {
+  refreshButtons();
+  if (reminderInterval) checkReminder();
+  if (syncState.cloudReady) {
+    pullFromSupabase(function() { refreshAll(); });
+  }
+}, 60000);
+
+// 键盘快捷键
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.shiftKey && e.key === 'I') {
+    e.preventDefault();
+    if (!document.getElementById('btnPunchIn').disabled) punch('in');
+  }
+  if (e.ctrlKey && e.shiftKey && e.key === 'O') {
+    e.preventDefault();
+    if (!document.getElementById('btnPunchOut').disabled) punch('out');
+  }
+});
+
+// ===== PWA 安装支持 =====
+var deferredPrompt = null;
+
+// ===== Service Worker 注册 + 智能更新检测 =====
+var swRegistration = null;
+var updateToastTimer = null;
+
+function showUpdateToast() {
+  var toast = document.getElementById('updateToast');
+  if (toast) {
+    toast.classList.add('show');
+    // 8 秒后自动隐藏
+    clearTimeout(updateToastTimer);
+    updateToastTimer = setTimeout(function() {
+      toast.classList.remove('show');
+    }, 8000);
+  }
+}
+
+function applyUpdate() {
+  var toast = document.getElementById('updateToast');
+  if (toast) toast.classList.remove('show');
+  // 通知等待中的 SW 立即激活
+  if (swRegistration && swRegistration.waiting) {
+    swRegistration.waiting.postMessage({ type: 'skipWaiting' });
+  }
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js', { scope: '/' }).then(function(reg) {
+    swRegistration = reg;
+    console.log('[Tick] SW 已注册, scope:', reg.scope);
+
+    // 检测是否已有等待中的新 SW（页面被旧 SW 激活后刷新时）
+    if (reg.waiting) {
+      console.log('[Tick] 检测到等待中的新版本 SW');
+      showUpdateToast();
+    }
+
+    // 监听新 SW 出现
+    reg.addEventListener('updatefound', function() {
+      var newWorker = reg.installing;
+      if (!newWorker) return;
+      console.log('[Tick] 发现新版本，正在安装...');
+      newWorker.addEventListener('statechange', function() {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          console.log('[Tick] 新版本已就绪，显示更新提示');
+          showUpdateToast();
+        }
+      });
+    });
+  }).catch(function(e) {
+    console.log('SW 注册失败（正常，可能尚未部署 sw.js）:', e.message);
+  });
+
+  // SW 生命周期变化时的回调
+  navigator.serviceWorker.addEventListener('controllerchange', function() {
+    console.log('[Tick] SW 控制器已切换，刷新页面以使用新版本');
+    window.location.reload();
+  });
+
+  // 定时检查更新（每小时一次，静默）
+  setInterval(function() {
+    if (swRegistration) {
+      swRegistration.update().catch(function() {});
+    }
+  }, 60 * 60 * 1000);
+}
+
+// 安装事件（如果浏览器支持原生安装提示）
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  deferredPrompt = e;
+});
+
+// 页面加载后显示安装条（不依赖 beforeinstallprompt）
+window.addEventListener('load', function() {
+  setTimeout(function() {
+    if (!window.matchMedia('(display-mode: standalone)').matches &&
+        localStorage.getItem('pwa_install_dismissed') !== '1') {
+      document.getElementById('installBar').classList.add('show');
+    }
+  }, 2500);
+});
+
+function installPWA() {
+  if (deferredPrompt) {
+    // Chrome/Edge 原生安装
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(function(result) {
+      deferredPrompt = null;
+      document.getElementById('installBar').classList.remove('show');
+    });
+  } else {
+    // 显示指引
+    document.getElementById('installGuideModal').style.display = 'flex';
+  }
+}
+
+function closeInstallGuide() {
+  document.getElementById('installGuideModal').style.display = 'none';
+}
+
+function dismissInstallBar() {
+  document.getElementById('installBar').classList.remove('show');
+  localStorage.setItem('pwa_install_dismissed', '1');
+}
+</script>
+
+<!-- 版本更新提示 -->
+<div class="update-toast" id="updateToast" onclick="applyUpdate()">
+  <span class="update-toast-dot"></span>
+  新版就绪 · 点击更新
+</div>
+
+</body>
+</html>
