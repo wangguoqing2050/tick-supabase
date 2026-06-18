@@ -1,1 +1,1 @@
-# Tick v33 - Supabase
+# Tick v33 - Supabase Cloud Sync
