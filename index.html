@@ -875,18 +875,11 @@ function getSyncCode() {
   var key = 'punch_sync_code';
   var code = localStorage.getItem(key);
   if (!code) {
-    // 兼容旧设备ID
+    // 默认用户名 wangguoqing，与数据库已有数据匹配
     var oldId = localStorage.getItem('punch_device_id');
-    if (oldId) { code = oldId; localStorage.setItem(key, code); }
-    else {
-      // 生成随机码：PC + 6位大写字母/数字
-      var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      code = 'PC';
-      for (var i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      localStorage.setItem(key, code);
-    }
+    if (oldId) { code = oldId; }
+    else { code = 'wangguoqing'; }
+    localStorage.setItem(key, code);
   }
   return code;
 }
