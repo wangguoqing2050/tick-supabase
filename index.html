@@ -1328,7 +1328,13 @@ function todayKey() {
 
 function nowStr() {
   var d = new Date();
-  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  var h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
+  // 秒数 > 0 时向上取整到下一分钟（9:00:22 → 9:01）
+  if (s > 0) {
+    m++;
+    if (m >= 60) { m = 0; h++; if (h >= 24) h = 0; }
+  }
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
 }
 
 function nowFullStr() {
