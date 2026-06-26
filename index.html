@@ -1478,7 +1478,10 @@ var titleFlashInterval = null;
 function scheduleReminder(inTime) {
   clearReminders();
   var inMins = timeToMinutes(inTime);
-  targetOutMins = inMins + WORK_MINUTES;
+  var records = loadRecords();
+  var today = records[todayKey()] || { status: null };
+  var addMins = isHalfDayLeave(today.status) ? HALF_WORK_MINUTES : WORK_MINUTES;
+  targetOutMins = inMins + addMins;
   targetOutTime = minutesToTime(targetOutMins);
   notified5min = false;
   notifiedNow = false;
@@ -1694,7 +1697,8 @@ function resetOvertimeDefault() {
   if (today && today.in) {
     var parts = today.in.split(':');
     var inMins = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-    var outMins = inMins + WORK_MINUTES;
+    var addMins = isHalfDayLeave(today.status) ? HALF_WORK_MINUTES : WORK_MINUTES;
+    var outMins = inMins + addMins;
     wheelHourVal = Math.floor(outMins / 60);
     wheelMinVal = Math.floor((outMins % 60) / 5) * 5;
     scrollWheelTo(wheelHourEl, wheelHourVal);
